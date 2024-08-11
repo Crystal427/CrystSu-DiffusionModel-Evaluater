@@ -183,7 +183,7 @@ def process_image(artist_folder, year_folder, filename, output_folder):
         ])
         suffix = ", ".join(suffix_tags)
 
-        finaltag_dan = f"{prefix}, |||{suffix}"
+        finaltag_dan = f"{prefix},{suffix}"
 
     tags_native = [
         final_artist_tag.strip(', '),
@@ -290,7 +290,7 @@ def main(dataset_folder, percentile, output_folder):
         
         # 创建zip文件
         os.makedirs(output_folder, exist_ok=True)
-        zip_filename = os.path.join(output_folder, f"DatasetEval_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip")
+        zip_filename = os.path.join(output_folder, f"DatasetEval_{datetime.now().strftime('%Y%m%d_%H%M%S')}.eval")
         
         with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as zipf:
             for root, _, files in os.walk(temp_dir):

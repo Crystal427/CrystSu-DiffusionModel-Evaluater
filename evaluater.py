@@ -10,6 +10,7 @@ from huggingface_hub import hf_hub_download
 from huggingface_hub import HfFileSystem
 from natsort import natsorted
 from imgutils.generic import classify_predict_score
+import shutil
 
 class SDWebUIGenerator:
     def __init__(self, host, port, model='13.4-6e'):
@@ -165,16 +166,22 @@ def mark_model_as_completed(meta_path, model):
         json.dump(meta_data, f, indent=2)
 
 def main(zip_path, host, port, model, eval_pic_num):
-    # Unzip the file
+    # Set up paths
     script_dir = os.path.dirname(os.path.abspath(__file__))
     temp_dir = os.path.join(script_dir, 'temp')
-    unzip_file(zip_path, temp_dir)
-    
     dataset_path = os.path.join(temp_dir)
     meta_path = os.path.join(temp_dir, 'meta.json')
-    
+
+    # Check if temp directory is empty
+    if not os.path.exists(temp_dir) or not os.listdir(temp_dir):
+        print("Temp directory is empty. Extracting ZIP file...")
+        os.makedirs(temp_dir, exist_ok=True)
+        unzip_file(zip_path, temp_dir)
+    else:
+        print("Temp directory is not empty. Using existing files.")
+
     # Check if the model has already been completed
-    with open(meta_path, 'r') as f:
+    with open(meta_path, 'r',encoding='utf-8') as f:
         meta_data = json.load(f)
     
     if 'completed_models' in meta_data and model in meta_data['completed_models']:
@@ -242,6 +249,23 @@ def main(zip_path, host, port, model, eval_pic_num):
     # Mark the model as completed
     mark_model_as_completed(meta_path, model)
     print(f"Completed evaluation for model {model}")
+
+    # Repack the temp folder contents into a new ZIP file
+    output_zip_path = os.path.join(script_dir, zip_path)
+    with zipfile.ZipFile(output_zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+        for root, _, files in os.walk(temp_dir):
+            for file in files:
+                file_path = os.path.join(root, file)
+                arcname = os.path.relpath(file_path, temp_dir)
+                zipf.write(file_path, arcname)
+
+    print(f"Repacked temp folder contents into {output_zip_path}")
+
+    # Optionally, remove the temp folder after zipping
+    shutil.rmtree(temp_dir)
+    print("Removed temp folder")
+
+
 
 if __name__ == "__main__":
     import argparse
