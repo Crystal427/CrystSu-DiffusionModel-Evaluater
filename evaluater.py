@@ -13,12 +13,12 @@ from imgutils.generic import classify_predict_score
 import shutil
 
 class SDWebUIGenerator:
-    def __init__(self, host, port, model='13.4-6e'):
+    def __init__(self, host, port, model='13.5-3e'):
         self.api = webuiapi.WebUIApi(host=host, port=port)
         self.negative_prompt = "lowres,bad hands,worst quality,watermark,censored,jpeg artifacts"
         self.cfg_scale = 4.5
-        self.steps = 28
-        self.sampler_name = 'Euler a'
+        self.steps = 37
+        self.sampler_name = 'DPM++ 2M'
         self.scheduler = 'SGM Uniform'
         self.width = 1024
         self.height = 1024
@@ -271,7 +271,7 @@ if __name__ == "__main__":
     import argparse
     
     parser = argparse.ArgumentParser(description="Evaluate SD models")
-    parser.add_argument("--zip_path", help="Path to the ZIP file containing the dataset")
+    parser.add_argument("--eval_path", help="Path to the ZIP file containing the dataset")
     parser.add_argument("--host", default="localhost", help="Host for the SD Web UI API")
     parser.add_argument("--port", type=int, default=7860, help="Port for the SD Web UI API")
     parser.add_argument("--model", help="Model name to use for generation")
