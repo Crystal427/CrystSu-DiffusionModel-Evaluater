@@ -14,3 +14,10 @@ script will randomly select 10 image and their tags.
 ```  
 python evaluater.py --eval_path Path/to/Your/GeneratedEvalTaskFile  
 ```
+You can use --host to specific model runner. gradio interface is also supported.  
+For a large dataset, evaluation may take a lot of time. Muilt-threading support is currently developing.  
+
+## Visualization Eval-result  
+```
+python gradio_interface.py  --eval_path Path/to/Your/GeneratedEvalTaskFile
+```
