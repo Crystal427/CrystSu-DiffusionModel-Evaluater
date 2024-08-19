@@ -11,10 +11,19 @@ from huggingface_hub import HfFileSystem
 from natsort import natsorted
 from imgutils.generic import classify_predict_score
 import shutil
+from tqdm import tqdm
+import time
+import requests
 
 class SDWebUIGenerator:
-    def __init__(self, host, port, model='13.5-3e'):
-        self.api = webuiapi.WebUIApi(host=host, port=port)
+    def __init__(self, host, port, model, max_retries=3, retry_delay=5):
+        self.host = host
+        self.port = port
+        self.model = model
+        self.max_retries = max_retries
+        self.retry_delay = retry_delay
+        self.api = self._connect_with_retry()
+        
         self.negative_prompt = "lowres,bad hands,worst quality,watermark,censored,jpeg artifacts"
         self.cfg_scale = 4.5
         self.steps = 37
@@ -23,8 +32,23 @@ class SDWebUIGenerator:
         self.width = 1024
         self.height = 1024
         self.seed = 47
-
+        self.api = self._connect_with_retry()
         self.set_model(model)
+
+    def _connect_with_retry(self):
+        while True:
+            try:
+                api = webuiapi.WebUIApi(host=self.host, port=self.port, use_https=True)
+                # Test the connection
+                api.util_get_model_names()
+                print("Successfully connected to the SD Web UI API")
+                return api
+            except Exception as e:
+                print(f"Connection attempt failed: {str(e)}")
+                print("Retrying in 1 second...")
+                time.sleep(1)
+
+
 
     def set_model(self, model):
         self.api.util_set_model(model)
@@ -141,13 +165,12 @@ def update_tracer_json(artist_path, image_name, model, danbooru_score, florence_
     with open(tracer_path, 'w') as f:
         json.dump(tracer_data, f, indent=2)
 
-def update_meta_json(meta_path, current_model, current_artist, current_image):
-    with open(meta_path, 'r',encoding='utf-8') as f:
+def update_meta_json(meta_path, current_model, current_artist):
+    with open(meta_path, 'r', encoding='utf-8') as f:
         meta_data = json.load(f)
     
     meta_data['current_model'] = current_model
     meta_data['current_artist'] = current_artist
-    meta_data['current_image'] = current_image
     
     with open(meta_path, 'w') as f:
         json.dump(meta_data, f, indent=2)
@@ -181,7 +204,7 @@ def main(zip_path, host, port, model, eval_pic_num):
         print("Temp directory is not empty. Using existing files.")
 
     # Check if the model has already been completed
-    with open(meta_path, 'r',encoding='utf-8') as f:
+    with open(meta_path, 'r', encoding='utf-8') as f:
         meta_data = json.load(f)
     
     if 'completed_models' in meta_data and model in meta_data['completed_models']:
@@ -189,62 +212,101 @@ def main(zip_path, host, port, model, eval_pic_num):
         return
     
     # Initialize the generator
-    generator = SDWebUIGenerator(host, port, model)
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            generator = SDWebUIGenerator(host, port, model)
+            break
+        except Exception as e:
+            print(f"Attempt {attempt + 1} failed to connect to the SD Web UI API: {str(e)}")
+            if attempt < max_retries - 1:
+                print(f"Retrying in 1 second...")
+                time.sleep(1)
+            else:
+                print(f"Failed to connect after {max_retries} attempts. Exiting.")
+                return
     
     # Get the current progress from meta.json
     current_artist = meta_data.get('current_artist', '')
-    current_image = meta_data.get('current_image', '')
     
-    for artist_folder in os.listdir(dataset_path):
+    # Get the list of all artist folders
+    artist_folders = [folder for folder in os.listdir(dataset_path) if os.path.isdir(os.path.join(dataset_path, folder))]
+    
+    # Create a tqdm progress bar
+    pbar = tqdm(total=len(artist_folders), desc=f"Processing artists for model {model}", position=0, leave=True)
+    
+    for artist_folder in artist_folders:
         artist_path = os.path.join(dataset_path, artist_folder)
-        if os.path.isdir(artist_path):
-            # Skip artists that have been processed
-            if current_artist and artist_folder < current_artist:
-                continue
+        
+        # Skip artists that have been processed
+        if current_artist and artist_folder <= current_artist:
+            pbar.update(1)
+            continue
+        
+        print(f"\nProcessing artist: {artist_folder}")
+        selected_images = select_images(artist_path, eval_pic_num)
+        
+        for image_path in selected_images:
+            image_name = os.path.basename(image_path)
+            image_name_without_ext, _ = os.path.splitext(image_name)
             
-            selected_images = select_images(artist_path, eval_pic_num)
+            print(f"  Processing image: {image_name}")
+            danbooru_tags, florence_tags = process_image(artist_path, image_name)
             
-            for image_path in selected_images:
-                image_name = os.path.basename(image_path)
-                image_name_without_ext, _ = os.path.splitext(image_name)
-                
-                # Skip images that have been processed
-                if current_image and image_name <= current_image:
-                    continue
-                
-                danbooru_tags, florence_tags = process_image(artist_path, image_name)
-                
-                # Create output directories if they don't exist
-                danbooru_output_dir = os.path.join(artist_path, 'ModelGenPicDan')
-                florence_output_dir = os.path.join(artist_path, 'ModelGenPicComt')
-                os.makedirs(danbooru_output_dir, exist_ok=True)
-                os.makedirs(florence_output_dir, exist_ok=True)
-                
-                # Generate and save Danbooru image
-                danbooru_image = generator.generate(danbooru_tags)
-                danbooru_output_path = os.path.join(danbooru_output_dir, f"{image_name_without_ext}_{model}.png")
-                danbooru_image.save(danbooru_output_path, format='PNG')
-                
-                # Generate and save Florence image
-                florence_image = generator.generate(florence_tags)
-                florence_output_path = os.path.join(florence_output_dir, f"{image_name_without_ext}_{model}.png")
-                florence_image.save(florence_output_path, format='PNG')
-                
-                # Evaluate images
-                _, danbooru_score = process_image_file(Image.open(danbooru_output_path))
-                _, florence_score = process_image_file(Image.open(florence_output_path))
-                
-                # Update tracer.json
-                update_tracer_json(artist_path, image_name, model, 
-                                   danbooru_score['aesthetic_score'], 
-                                   florence_score['aesthetic_score'])
-                
-                # Update meta.json
-                update_meta_json(meta_path, model, artist_folder, image_name)
-                
-                print(f"Processed {image_name} for {artist_folder}")
+            # Create output directories if they don't exist
+            danbooru_output_dir = os.path.join(artist_path, 'ModelGenPicDan')
+            florence_output_dir = os.path.join(artist_path, 'ModelGenPicComt')
+            os.makedirs(danbooru_output_dir, exist_ok=True)
+            os.makedirs(florence_output_dir, exist_ok=True)
             
-            print(f"Completed processing {artist_folder}")
+            # Generate and save Danbooru image
+            for attempt in range(max_retries):
+                try:
+                    danbooru_image = generator.generate(danbooru_tags)
+                    danbooru_output_path = os.path.join(danbooru_output_dir, f"{image_name_without_ext}_{model}.png")
+                    danbooru_image.save(danbooru_output_path, format='PNG')
+                    break
+                except Exception as e:
+                    print(f"Attempt {attempt + 1} failed to generate Danbooru image: {str(e)}")
+                    if attempt < max_retries - 1:
+                        print("Retrying in 1 second...")
+                        time.sleep(1)
+                    else:
+                        print(f"Failed to generate Danbooru image after {max_retries} attempts. Skipping.")
+            
+            # Generate and save Florence image
+            for attempt in range(max_retries):
+                try:
+                    florence_image = generator.generate(florence_tags)
+                    florence_output_path = os.path.join(florence_output_dir, f"{image_name_without_ext}_{model}.png")
+                    florence_image.save(florence_output_path, format='PNG')
+                    break
+                except Exception as e:
+                    print(f"Attempt {attempt + 1} failed to generate Florence image: {str(e)}")
+                    if attempt < max_retries - 1:
+                        print("Retrying in 1 second...")
+                        time.sleep(1)
+                    else:
+                        print(f"Failed to generate Florence image after {max_retries} attempts. Skipping.")
+            
+            # Evaluate images
+            _, danbooru_score = process_image_file(Image.open(danbooru_output_path))
+            _, florence_score = process_image_file(Image.open(florence_output_path))
+            
+            # Update tracer.json
+            update_tracer_json(artist_path, image_name, model, 
+                               danbooru_score['aesthetic_score'], 
+                               florence_score['aesthetic_score'])
+            
+            print(f"    Completed processing {image_name}")
+        
+        # Update meta.json after processing each artist
+        update_meta_json(meta_path, model, artist_folder)
+        
+        print(f"Completed processing {artist_folder}")
+        pbar.update(1)
+    
+    pbar.close()
     
     # Mark the model as completed
     mark_model_as_completed(meta_path, model)
@@ -265,17 +327,15 @@ def main(zip_path, host, port, model, eval_pic_num):
     shutil.rmtree(temp_dir)
     print("Removed temp folder")
 
-
-
 if __name__ == "__main__":
     import argparse
     
     parser = argparse.ArgumentParser(description="Evaluate SD models")
-    parser.add_argument("--eval_path", help="Path to the ZIP file containing the dataset")
+    parser.add_argument("--zip_path", help="Path to the ZIP file containing the dataset")
     parser.add_argument("--host", default="localhost", help="Host for the SD Web UI API")
     parser.add_argument("--port", type=int, default=7860, help="Port for the SD Web UI API")
     parser.add_argument("--model", help="Model name to use for generation")
-    parser.add_argument("--eval_pic_num", default=5, type=int, help="Number of pictures to evaluate (max 10)")
+    parser.add_argument("--eval_pic_num", default=4, type=int, help="Number of pictures to evaluate (max 10)")
     
     args = parser.parse_args()
     
