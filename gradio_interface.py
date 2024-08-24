@@ -81,8 +81,16 @@ def update_display(unzip_folder, artist, picnum):
     logging.info(f"Comt pic paths: {comt_pics}")
     logging.info(f"Dan pic paths: {dan_pics}")
     
-    comt_pics = [pic for pic in comt_pics if pic[0] is not None]
-    dan_pics = [pic for pic in dan_pics if pic[0] is not None]
+    def sort_key(filename):
+        # Extract model version and epoch number from filename
+        parts = filename[1].split('_')[1].split('-')
+        model_version = float(parts[0])
+        epoch_number = int(parts[1].replace('e.png', ''))
+        return (-model_version, -epoch_number)  # Negative for descending order
+    
+    # Filter out None values and sort
+    comt_pics = sorted([pic for pic in comt_pics if pic[0] is not None], key=sort_key)
+    dan_pics = sorted([pic for pic in dan_pics if pic[0] is not None], key=sort_key)
     
     if not original_pic:
         return [None], [], [], None, None, None, "Error: Original picture not found.", ""
@@ -185,60 +193,58 @@ def create_interface(unzip_folder):
     """
     
     with gr.Blocks(css="""
-        .original-image img {
-            object-fit: contain;
-            width: 100%;
-            height: 100%;
-            max-height: 200px;
-        }
-        .gallery-item {
-            position: relative;
-        }
+        .container { max-width: 1200px; margin: auto; padding: 20px; }
+        .original-image img { object-fit: contain; width: 100%; height: 100%; max-height: 300px; }
+        .gallery-item { position: relative; }
         .gallery-item .caption {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            background: rgba(0, 0, 0, 0.5);
-            color: white;
-            padding: 5px;
-            font-size: 12px;
-            text-align: center;
-            word-wrap: break-word;
+            position: absolute; bottom: 0; left: 0; right: 0;
+            background: rgba(0, 0, 0, 0.5); color: white;
+            padding: 5px; font-size: 12px; text-align: center; word-wrap: break-word;
         }
+        .navigation-buttons { display: flex; justify-content: space-between; margin-top: 20px; }
+        .plot-container { display: flex; flex-wrap: wrap; justify-content: space-between; }
+        .plot-item { flex-basis: calc(33.33% - 10px); margin-bottom: 20px; }
     """, head=shortcut_js) as demo:
-        gr.Markdown("# CrystSu-Model Visualize Analysis")
         
-        with gr.Row():
-            artist_dropdown = gr.Dropdown(choices=artists, label="Select Artist")
-            picnum_dropdown = gr.Dropdown(label="Select Picture Number")
-        
-        with gr.Row():
-            original_image = gr.Image(
-                label="Original Image", 
-                show_label=True, 
-                type="filepath", 
-                interactive=False,
-                container=False,
-                elem_classes=["original-image"]
-            )
-        
-        with gr.Row():
-            comt_images = gr.Gallery(label="ModelGenPicComt Images", show_label=True, columns=[3], rows=[1], height="auto", object_fit="contain")
-        
-        with gr.Row():
-            dan_images = gr.Gallery(label="ModelGenPicDan Images", show_label=True, columns=[3], rows=[1], height="auto", object_fit="contain")
-        
-        with gr.Row():
-            prev_button = gr.Button("PREV", elem_id="prev-button")
-            next_button = gr.Button("NEXT", elem_id="next-button")
-        
-        with gr.Row():
-            danbooru_plot = gr.Plot(label="Danbooru Tags Rating")
-            natural_plot = gr.Plot(label="Natural Language Tags Rating")
-            diff_plot = gr.Plot(label="Absolute Difference between Ratings")
-        
-        text_info = gr.Textbox(label="Image Information", lines=10)
+        with gr.Column(elem_classes="container"):
+            gr.Markdown("# CrystSu-Model Visualize Analysis")
+            
+            with gr.Row():
+                artist_dropdown = gr.Dropdown(choices=artists, label="Select Artist", scale=2)
+                picnum_dropdown = gr.Dropdown(label="Select Picture Number", scale=2)
+            
+            with gr.Row():
+                with gr.Column(scale=1):
+                    original_image = gr.Image(
+                        label="Original Image", 
+                        show_label=True, 
+                        type="filepath", 
+                        interactive=False,
+                        elem_classes=["original-image"]
+                    )
+                
+                with gr.Column(scale=2):
+                    with gr.Row():
+                        dan_images = gr.Gallery(label="ModelGenPicDan Images", show_label=True, columns=[3], rows=[1], height="auto", object_fit="contain")
+
+                    with gr.Row():
+                        comt_images = gr.Gallery(label="ModelGenPicComt Images", show_label=True, columns=[3], rows=[1], height="auto", object_fit="contain")
+                    
+
+            
+            with gr.Row(elem_classes="navigation-buttons"):
+                prev_button = gr.Button("PREV", elem_id="prev-button")
+                next_button = gr.Button("NEXT", elem_id="next-button")
+            
+            with gr.Row(elem_classes="plot-container"):
+                with gr.Column(elem_classes="plot-item"):
+                    danbooru_plot = gr.Plot(label="Danbooru Tags Rating")
+                with gr.Column(elem_classes="plot-item"):
+                    natural_plot = gr.Plot(label="Natural Language Tags Rating")
+                with gr.Column(elem_classes="plot-item"):
+                    diff_plot = gr.Plot(label="Absolute Difference between Ratings")
+            
+            text_info = gr.Textbox(label="Image Information", lines=10)
         
         def update_picnums(artist):
             artist_folder = os.path.join(unzip_folder, artist)
