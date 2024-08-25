@@ -50,6 +50,10 @@ def get_model_epochs(artist_folder, picnum):
     
     return sorted(list(epochs))
 
+def load_tracer_data(artist_folder):
+    with open(os.path.join(artist_folder, "tracer.json"), 'r') as f:
+        return json.load(f)
+
 def create_plot(data, title):
     fig, ax = plt.subplots(figsize=(10, 5))
     for key, values in data.items():
@@ -64,62 +68,23 @@ def create_plot(data, title):
     plt.tight_layout()
     return fig
 
-def update_display(unzip_folder, artist, picnum):
-    artist_folder = os.path.join(unzip_folder, artist)
+def create_all_images_plot(tracer_data, plot_type):
+    fig, ax = plt.subplots(figsize=(12, 6))
+    for image, data in tracer_data.items():
+        if plot_type in data:
+            epochs = sorted(data[plot_type].keys(), key=lambda x: x.split('_')[1])
+            values = [data[plot_type][epoch] for epoch in epochs]
+            ax.plot(range(len(epochs)), values, label=image.split('.')[0])
     
-    original_ext = get_original_pic_extension(artist_folder, picnum)
-    if original_ext is None:
-        return [None], [], [], None, None, None, "Error: Original picture not found.", ""
-    
-    original_pic = get_image_path(os.path.join(artist_folder, "OriginalPic"), f"{picnum}{original_ext}")
-    
-    epochs = get_model_epochs(artist_folder, picnum)
-    comt_pics = [(get_image_path(os.path.join(artist_folder, "ModelGenPicComt"), f"{picnum}_{epoch}.png"), f"{picnum}_{epoch}.png") for epoch in epochs]
-    dan_pics = [(get_image_path(os.path.join(artist_folder, "ModelGenPicDan"), f"{picnum}_{epoch}.png"), f"{picnum}_{epoch}.png") for epoch in epochs]
-    
-    logging.info(f"Original pic path: {original_pic}")
-    logging.info(f"Comt pic paths: {comt_pics}")
-    logging.info(f"Dan pic paths: {dan_pics}")
-    
-    def sort_key(filename):
-        # Extract model version and epoch number from filename
-        parts = filename[1].split('_')[1].split('-')
-        model_version = float(parts[0])
-        epoch_number = int(parts[1].replace('e.png', ''))
-        return (-model_version, -epoch_number)  # Negative for descending order
-    
-    # Filter out None values and sort
-    comt_pics = sorted([pic for pic in comt_pics if pic[0] is not None], key=sort_key)
-    dan_pics = sorted([pic for pic in dan_pics if pic[0] is not None], key=sort_key)
-    
-    if not original_pic:
-        return [None], [], [], None, None, None, "Error: Original picture not found.", ""
-    
-    tracer_data = load_tracer_data(artist_folder)
-    pic_data = next((data for key, data in tracer_data.items() if key.startswith(f"{picnum}.")), None)
-    if pic_data is None:
-        return [(original_pic, os.path.basename(original_pic))], comt_pics, dan_pics, None, None, None, "Error: Picture data not found in tracer.json.", ""
-    
-    danbooru_plot = create_plot({picnum: pic_data["PicDanboorutagsRatingPerEpoch"]}, "Danbooru Tags Rating")
-    natural_plot = create_plot({picnum: pic_data["PicNatrualLanguagetagsRatingPerEpoch"]}, "Natural Language Tags Rating")
-    
-    diff_data = {}
-    for epoch_key in pic_data["PicDanboorutagsRatingPerEpoch"]:
-        epoch_name = epoch_key.split('_')[1]
-        diff_data[epoch_key] = abs(pic_data["PicDanboorutagsRatingPerEpoch"][epoch_key] - pic_data["PicNatrualLanguagetagsRatingPerEpoch"][epoch_key])
-    diff_plot = create_plot({f"{picnum} Difference": diff_data}, "Absolute Difference between Ratings")
-    
-    text_info = f"""
-    Danbooru tags: {pic_data['Danboorutags']}
-    
-    Florence2 tags: {pic_data['Florence2tags']}
-    
-    Original Name: {pic_data['OriginalName']}
-    
-    Original Folder: {pic_data['OriginalFolder']}
-    """
-    
-    return [(original_pic, os.path.basename(original_pic))], comt_pics, dan_pics, danbooru_plot, natural_plot, diff_plot, text_info, ""
+    ax.set_title(f"All Images - {plot_type}")
+    ax.set_xlabel('Epoch')
+    ax.set_ylabel('Rating')
+    ax.set_xticks(range(len(epochs)))
+    ax.set_xticklabels([epoch.split('_')[1] for epoch in epochs], rotation=45)
+    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.tight_layout()
+    return fig
+
 
 def get_next_artist(artists, current_artist):
     try:
@@ -167,8 +132,74 @@ def on_prev_click(unzip_folder, current_artist, current_picnum):
         else:
             return current_artist, current_picnum, "This is the first picture of the first artist."
 
+
+
+
+def update_display(unzip_folder, artist, picnum):
+    artist_folder = os.path.join(unzip_folder, artist)
+    
+    original_ext = get_original_pic_extension(artist_folder, picnum)
+    if original_ext is None:
+        return [None], [], [], None, None, None, None, "Error: Original picture not found.", ""
+    
+    original_pic = get_image_path(os.path.join(artist_folder, "OriginalPic"), f"{picnum}{original_ext}")
+    
+    epochs = get_model_epochs(artist_folder, picnum)
+    comt_pics = [(get_image_path(os.path.join(artist_folder, "ModelGenPicComt"), f"{picnum}_{epoch}.png"), f"{picnum}_{epoch}.png") for epoch in epochs]
+    dan_pics = [(get_image_path(os.path.join(artist_folder, "ModelGenPicDan"), f"{picnum}_{epoch}.png"), f"{picnum}_{epoch}.png") for epoch in epochs]
+    
+    logging.info(f"Original pic path: {original_pic}")
+    logging.info(f"Comt pic paths: {comt_pics}")
+    logging.info(f"Dan pic paths: {dan_pics}")
+    
+    def sort_key(filename):
+        parts = filename[1].split('_')[1].split('-')
+        model_version = float(parts[0])
+        epoch_number = int(parts[1].replace('e.png', ''))
+        return (-model_version, -epoch_number)
+    
+    comt_pics = sorted([pic for pic in comt_pics if pic[0] is not None], key=sort_key)
+    dan_pics = sorted([pic for pic in dan_pics if pic[0] is not None], key=sort_key)
+    
+    if not original_pic:
+        return [None], [], [], None, None, None, None, "Error: Original picture not found.", ""
+    
+    tracer_data = load_tracer_data(artist_folder)
+    pic_data = next((data for key, data in tracer_data.items() if key.startswith(f"{picnum}.")), None)
+    if pic_data is None:
+        return [(original_pic, os.path.basename(original_pic))], comt_pics, dan_pics, None, None, None, None, "Error: Picture data not found in tracer.json.", ""
+    
+    danbooru_plot = create_plot({picnum: pic_data["PicDanboorutagsRatingPerEpoch"]}, "Danbooru Tags Rating")
+    natural_plot = create_plot({picnum: pic_data["PicNatrualLanguagetagsRatingPerEpoch"]}, "Natural Language Tags Rating")
+    
+    diff_data = {}
+    for epoch_key in pic_data["PicDanboorutagsRatingPerEpoch"]:
+        epoch_name = epoch_key.split('_')[1]
+        diff_data[epoch_key] = abs(pic_data["PicDanboorutagsRatingPerEpoch"][epoch_key] - pic_data["PicNatrualLanguagetagsRatingPerEpoch"][epoch_key])
+    diff_plot = create_plot({f"{picnum} Difference": diff_data}, "Absolute Difference between Ratings")
+    
+    all_images_plot = create_all_images_plot(tracer_data, "PicDanboorutagsRatingPerEpoch")
+    
+    text_info = f"""
+    Danbooru tags: {pic_data['Danboorutags']}
+    
+    Florence2 tags: {pic_data['Florence2tags']}
+    
+    Original Name: {pic_data['OriginalName']}
+    
+    Original Folder: {pic_data['OriginalFolder']}
+    """
+    
+    return [(original_pic, os.path.basename(original_pic))], comt_pics, dan_pics, danbooru_plot, natural_plot, diff_plot, all_images_plot, text_info, ""
+
 def create_interface(unzip_folder):
     artists = get_artists(unzip_folder)
+    human_feedback_data = load_human_feedback()
+    
+    # Get the first artist and their first pic number
+    default_artist = artists[0] if artists else None
+    default_picnums = get_picnums(os.path.join(unzip_folder, default_artist)) if default_artist else []
+    default_picnum = default_picnums[0] if default_picnums else None
     
     shortcut_js = """
     <script>
@@ -185,6 +216,8 @@ def create_interface(unzip_folder):
                 document.getElementById("next-button").click();
             } else if (e.code == "ArrowLeft") {
                 document.getElementById("prev-button").click();
+            } else if (e.key >= "1" && e.key <= "4") {
+                document.querySelectorAll('input[type="radio"]')[parseInt(e.key) - 1].click();
             }
         }
     }
@@ -203,15 +236,19 @@ def create_interface(unzip_folder):
         }
         .navigation-buttons { display: flex; justify-content: space-between; margin-top: 20px; }
         .plot-container { display: flex; flex-wrap: wrap; justify-content: space-between; }
-        .plot-item { flex-basis: calc(33.33% - 10px); margin-bottom: 20px; }
+        .plot-item { flex-basis: calc(50% - 10px); margin-bottom: 20px; }
+        .human-feedback { display: flex; flex-direction: column; margin-top: 10px; }
+        .human-feedback .label-wrap { margin-bottom: 10px; }
+        .human-feedback .wrap { display: flex; flex-direction: column; }
+        .human-feedback .wrap label { margin-bottom: 5px; }
     """, head=shortcut_js) as demo:
         
         with gr.Column(elem_classes="container"):
             gr.Markdown("# CrystSu-Model Visualize Analysis")
             
             with gr.Row():
-                artist_dropdown = gr.Dropdown(choices=artists, label="Select Artist", scale=2)
-                picnum_dropdown = gr.Dropdown(label="Select Picture Number", scale=2)
+                artist_dropdown = gr.Dropdown(choices=artists, label="Select Artist", value=default_artist, scale=2)
+                picnum_dropdown = gr.Dropdown(choices=default_picnums, value=default_picnum, label="Select Picture Number", scale=2)
             
             with gr.Row():
                 with gr.Column(scale=1):
@@ -222,6 +259,13 @@ def create_interface(unzip_folder):
                         interactive=False,
                         elem_classes=["original-image"]
                     )
+                    
+                    human_feedback = gr.Radio(
+                        choices=["1. OverFit", "2. Well-Trained", "3. Need-Train", "4. Unfit"],
+                        label="Human Feedback",
+                        value=human_feedback_data.get(default_artist, ""),
+                        elem_classes=["human-feedback"]
+                    )
                 
                 with gr.Column(scale=2):
                     with gr.Row():
@@ -229,8 +273,6 @@ def create_interface(unzip_folder):
 
                     with gr.Row():
                         comt_images = gr.Gallery(label="ModelGenPicComt Images", show_label=True, columns=[3], rows=[1], height="auto", object_fit="contain")
-                    
-
             
             with gr.Row(elem_classes="navigation-buttons"):
                 prev_button = gr.Button("PREV", elem_id="prev-button")
@@ -243,18 +285,23 @@ def create_interface(unzip_folder):
                     natural_plot = gr.Plot(label="Natural Language Tags Rating")
                 with gr.Column(elem_classes="plot-item"):
                     diff_plot = gr.Plot(label="Absolute Difference between Ratings")
+                with gr.Column(elem_classes="plot-item"):
+                    all_images_plot = gr.Plot(label="All Images Danbooru Tags Rating")
             
             text_info = gr.Textbox(label="Image Information", lines=10)
-        
+            gr.Markdown("Use for private model human eval")
+
         def update_picnums(artist):
             artist_folder = os.path.join(unzip_folder, artist)
             picnums = get_picnums(artist_folder)
-            return gr.update(choices=picnums, value=picnums[0] if picnums else None)
+            current_feedback = human_feedback_data.get(artist, "")
+            return gr.update(choices=picnums, value=picnums[0] if picnums else None), current_feedback
         
-        artist_dropdown.change(update_picnums, inputs=[artist_dropdown], outputs=[picnum_dropdown])
+        artist_dropdown.change(update_picnums, inputs=[artist_dropdown], outputs=[picnum_dropdown, human_feedback])
         
         def on_select(artist, picnum):
-            original, comt, dan, danbooru, natural, diff, info, _ = update_display(unzip_folder, artist, picnum)
+            original, comt, dan, danbooru, natural, diff, all_images, info, _ = update_display(unzip_folder, artist, picnum)
+            
             return (
                 original[0][0] if original else None,
                 [(img, caption) for img, caption in comt],
@@ -262,37 +309,77 @@ def create_interface(unzip_folder):
                 danbooru,
                 natural,
                 diff,
+                all_images,
                 info
             )
         
         picnum_dropdown.change(
             on_select,
             inputs=[artist_dropdown, picnum_dropdown],
-            outputs=[original_image, comt_images, dan_images, danbooru_plot, natural_plot, diff_plot, text_info]
+            outputs=[original_image, comt_images, dan_images, danbooru_plot, natural_plot, diff_plot, all_images_plot, text_info]
         )
         
         def on_next(artist, picnum):
             next_artist, next_picnum, _ = on_next_click(unzip_folder, artist, picnum)
-            return next_artist, next_picnum
+            if next_artist != artist:
+                current_feedback = human_feedback_data.get(next_artist, "")
+                return next_artist, next_picnum, current_feedback
+            return next_artist, next_picnum, gr.update()
         
         def on_prev(artist, picnum):
             prev_artist, prev_picnum, _ = on_prev_click(unzip_folder, artist, picnum)
-            return prev_artist, prev_picnum
+            if prev_artist != artist:
+                current_feedback = human_feedback_data.get(prev_artist, "")
+                return prev_artist, prev_picnum, current_feedback
+            return prev_artist, prev_picnum, gr.update()
         
         next_button.click(
             on_next,
             inputs=[artist_dropdown, picnum_dropdown],
-            outputs=[artist_dropdown, picnum_dropdown]
+            outputs=[artist_dropdown, picnum_dropdown, human_feedback]
         )
         
         prev_button.click(
             on_prev,
             inputs=[artist_dropdown, picnum_dropdown],
-            outputs=[artist_dropdown, picnum_dropdown]
+            outputs=[artist_dropdown, picnum_dropdown, human_feedback]
+        )
+        
+        def save_feedback(artist, feedback):
+            update_human_feedback(artist, feedback)
+            human_feedback_data[artist] = feedback  # Update local cache
+        
+        human_feedback.change(
+            save_feedback,
+            inputs=[artist_dropdown, human_feedback]
+        )
+        
+        # Trigger initial display
+        demo.load(
+            on_select,
+            inputs=[artist_dropdown, picnum_dropdown],
+            outputs=[original_image, comt_images, dan_images, danbooru_plot, natural_plot, diff_plot, all_images_plot, text_info]
         )
     
     return demo
 
+def load_human_feedback():
+    try:
+        with open("human_feedback.json", "r") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {}
+
+def save_human_feedback(data):
+    with open("human_feedback.json", "w") as f:
+        json.dump(data, f, indent=2)
+
+def update_human_feedback(artist, feedback):
+    data = load_human_feedback()
+    data[artist] = feedback
+    save_human_feedback(data)
+
+    
 if __name__ == "__main__":
     eval_file_path = "filename.eval"
     unzip_folder = r"F:\CrystSu-DiffusionModel-Evaluater\temp"
