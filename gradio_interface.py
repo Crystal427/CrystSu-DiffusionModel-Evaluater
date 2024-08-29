@@ -4,6 +4,9 @@ import json
 import zipfile
 import matplotlib.pyplot as plt
 import logging
+import seaborn as sns
+import numpy as np
+from scipy import stats
 
 logging.basicConfig(level=logging.INFO)
 
@@ -84,6 +87,27 @@ def create_all_images_plot(tracer_data, plot_type):
     ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
     plt.tight_layout()
     return fig
+
+def create_kde_plot(data, title):
+    fig, ax = plt.subplots(figsize=(10, 6))
+    for epoch, values in data.items():
+        sns.kdeplot(values, shade=True, ax=ax, label=f"Epoch {epoch}")
+    ax.set_title(title)
+    ax.set_xlabel('Rating')
+    ax.set_ylabel('Density')
+    ax.legend()
+    plt.tight_layout()
+    return fig
+
+def get_all_ratings(tracer_data, rating_type):
+    all_ratings = {}
+    for image_data in tracer_data.values():
+        for epoch, rating in image_data.get(rating_type, {}).items():
+            epoch_num = epoch.split('_')[1]
+            if epoch_num not in all_ratings:
+                all_ratings[epoch_num] = []
+            all_ratings[epoch_num].append(rating)
+    return all_ratings
 
 
 def get_next_artist(artists, current_artist):
@@ -183,7 +207,7 @@ def update_display(unzip_folder, artist, picnum):
     text_info = f"""
     Danbooru tags: {pic_data['Danboorutags']}
     
-    Florence2 tags: {pic_data['Florence2tags']}
+    NaturalLanguage tags: {pic_data['Florence2tags']}
     
     Original Name: {pic_data['OriginalName']}
     
@@ -216,8 +240,8 @@ def create_interface(unzip_folder):
                 document.getElementById("next-button").click();
             } else if (e.code == "ArrowLeft") {
                 document.getElementById("prev-button").click();
-            } else if (e.key >= "1" && e.key <= "4") {
-                document.querySelectorAll('input[type="radio"]')[parseInt(e.key) - 1].click();
+            } else if (e.key >= "1" && e.key <= "5") {
+                document.querySelector(`input[type="radio"][value="${e.key}"]`).click();
             }
         }
     }
@@ -238,58 +262,65 @@ def create_interface(unzip_folder):
         .plot-container { display: flex; flex-wrap: wrap; justify-content: space-between; }
         .plot-item { flex-basis: calc(50% - 10px); margin-bottom: 20px; }
         .human-feedback { display: flex; flex-direction: column; margin-top: 10px; }
-        .human-feedback .label-wrap { margin-bottom: 10px; }
-        .human-feedback .wrap { display: flex; flex-direction: column; }
-        .human-feedback .wrap label { margin-bottom: 5px; }
+        .human-feedback .gradio-radio { margin-bottom: 5px; }
     """, head=shortcut_js) as demo:
         
-        with gr.Column(elem_classes="container"):
-            gr.Markdown("# CrystSu-Model Visualize Analysis")
-            
-            with gr.Row():
-                artist_dropdown = gr.Dropdown(choices=artists, label="Select Artist", value=default_artist, scale=2)
-                picnum_dropdown = gr.Dropdown(choices=default_picnums, value=default_picnum, label="Select Picture Number", scale=2)
-            
-            with gr.Row():
-                with gr.Column(scale=1):
-                    original_image = gr.Image(
-                        label="Original Image", 
-                        show_label=True, 
-                        type="filepath", 
-                        interactive=False,
-                        elem_classes=["original-image"]
-                    )
+        with gr.Tabs():
+            with gr.TabItem("Image Analysis"):
+                with gr.Column(elem_classes="container"):
+                    gr.Markdown("# CrystSu-Model Visualize Analysis")
                     
-                    human_feedback = gr.Radio(
-                        choices=["1. OverFit", "2. Well-Trained", "3. Need-Train", "4. Unfit"],
-                        label="Human Feedback",
-                        value=human_feedback_data.get(default_artist, ""),
-                        elem_classes=["human-feedback"]
-                    )
-                
-                with gr.Column(scale=2):
                     with gr.Row():
-                        dan_images = gr.Gallery(label="ModelGenPicDan Images", show_label=True, columns=[3], rows=[1], height="auto", object_fit="contain")
+                        artist_dropdown = gr.Dropdown(choices=artists, label="Select Artist", value=default_artist, scale=2)
+                        picnum_dropdown = gr.Dropdown(choices=default_picnums, value=default_picnum, label="Select Picture Number", scale=2)
+                    
+                    with gr.Row():
+                        with gr.Column(scale=1):
+                            original_image = gr.Image(
+                                label="Original Image", 
+                                show_label=True, 
+                                type="filepath", 
+                                interactive=False,
+                                elem_classes=["original-image"]
+                            )
+                            
+                            human_feedback = gr.Radio(
+                                choices=["1. OverFit", "2. Well-Trained", "3. Need-Train", "4. Unfit", "5. Bad Artist"],
+                                label="Human Feedback",
+                                value=human_feedback_data.get(default_artist, ""),
+                                elem_classes=["human-feedback"]
+                            )
+                        
+                        with gr.Column(scale=2):
+                            with gr.Row():
+                                dan_images = gr.Gallery(label="ModelGenPicDan Images", show_label=True, columns=[3], rows=[1], height="auto", object_fit="contain")
 
-                    with gr.Row():
-                        comt_images = gr.Gallery(label="ModelGenPicComt Images", show_label=True, columns=[3], rows=[1], height="auto", object_fit="contain")
-            
-            with gr.Row(elem_classes="navigation-buttons"):
-                prev_button = gr.Button("PREV", elem_id="prev-button")
-                next_button = gr.Button("NEXT", elem_id="next-button")
-            
-            with gr.Row(elem_classes="plot-container"):
-                with gr.Column(elem_classes="plot-item"):
-                    danbooru_plot = gr.Plot(label="Danbooru Tags Rating")
-                with gr.Column(elem_classes="plot-item"):
-                    natural_plot = gr.Plot(label="Natural Language Tags Rating")
-                with gr.Column(elem_classes="plot-item"):
-                    diff_plot = gr.Plot(label="Absolute Difference between Ratings")
-                with gr.Column(elem_classes="plot-item"):
-                    all_images_plot = gr.Plot(label="All Images Danbooru Tags Rating")
-            
-            text_info = gr.Textbox(label="Image Information", lines=10)
-            gr.Markdown("Use for private model human eval")
+                            with gr.Row():
+                                comt_images = gr.Gallery(label="ModelGenPicComt Images", show_label=True, columns=[3], rows=[1], height="auto", object_fit="contain")
+                    
+                    with gr.Row(elem_classes="navigation-buttons"):
+                        prev_button = gr.Button("PREV", elem_id="prev-button")
+                        next_button = gr.Button("NEXT", elem_id="next-button")
+                    
+                    with gr.Row(elem_classes="plot-container"):
+                        with gr.Column(elem_classes="plot-item"):
+                            danbooru_plot = gr.Plot(label="Danbooru Tags Rating")
+                        with gr.Column(elem_classes="plot-item"):
+                            natural_plot = gr.Plot(label="Natural Language Tags Rating")
+                        with gr.Column(elem_classes="plot-item"):
+                            diff_plot = gr.Plot(label="Absolute Difference between Ratings")
+                        with gr.Column(elem_classes="plot-item"):
+                            all_images_plot = gr.Plot(label="All Images Danbooru Tags Rating")
+                    
+                    text_info = gr.Textbox(label="Image Information", lines=10)
+                    gr.Markdown("Use for private model human eval")
+
+            with gr.TabItem("Distribution Analysis"):
+                with gr.Row():
+                    danbooru_kde_plot = gr.Plot(label="Danbooru Tags Rating Distribution")
+                    natural_kde_plot = gr.Plot(label="Natural Language Tags Rating Distribution")
+                
+                aesthetic_kde_plot = gr.Plot(label="Aesthetic Score Distribution")
 
         def update_picnums(artist):
             artist_folder = os.path.join(unzip_folder, artist)
@@ -354,11 +385,43 @@ def create_interface(unzip_folder):
             inputs=[artist_dropdown, human_feedback]
         )
         
-        # Trigger initial display
+        def update_kde_plots(artist):
+            artist_folder = os.path.join(unzip_folder, artist)
+            tracer_data = load_tracer_data(artist_folder)
+            
+            danbooru_ratings = get_all_ratings(tracer_data, "PicDanboorutagsRatingPerEpoch")
+            natural_ratings = get_all_ratings(tracer_data, "PicNatrualLanguagetagsRatingPerEpoch")
+            
+            danbooru_kde = create_kde_plot(danbooru_ratings, "Danbooru Tags Rating Distribution")
+            natural_kde = create_kde_plot(natural_ratings, "Natural Language Tags Rating Distribution")
+            
+            # Corrected to access aesthetic_score from PicOriginalJsonData
+            aesthetic_scores = [data.get("PicOriginalJsonData", {}).get("aesthetic_score", 0) for data in tracer_data.values()]
+            aesthetic_kde = create_kde_plot({"Aesthetic Score": aesthetic_scores}, "Aesthetic Score Distribution")
+            
+            return danbooru_kde, natural_kde, aesthetic_kde
+
+        artist_dropdown.change(
+            update_kde_plots,
+            inputs=[artist_dropdown],
+            outputs=[danbooru_kde_plot, natural_kde_plot, aesthetic_kde_plot]
+        )
+        
+        # New combined function for initial load
+        def initial_load(artist, picnum):
+            image_outputs = on_select(artist, picnum)
+            kde_outputs = update_kde_plots(artist)
+            return image_outputs + kde_outputs
+
+        # Trigger initial display for both tabs
         demo.load(
-            on_select,
+            initial_load,
             inputs=[artist_dropdown, picnum_dropdown],
-            outputs=[original_image, comt_images, dan_images, danbooru_plot, natural_plot, diff_plot, all_images_plot, text_info]
+            outputs=[
+                original_image, comt_images, dan_images, danbooru_plot, natural_plot, 
+                diff_plot, all_images_plot, text_info,
+                danbooru_kde_plot, natural_kde_plot, aesthetic_kde_plot
+            ]
         )
     
     return demo
@@ -381,7 +444,7 @@ def update_human_feedback(artist, feedback):
 
     
 if __name__ == "__main__":
-    eval_file_path = "filename.eval"
+    eval_file_path = r"F:\CrystSu-DiffusionModel-Evaluater\DatasetEval_20240813_202059.eval"
     unzip_folder = r"F:\CrystSu-DiffusionModel-Evaluater\temp"
     
     unzip_file(eval_file_path, unzip_folder)
