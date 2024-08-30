@@ -23,7 +23,14 @@ For a large dataset, evaluation may take a lot of time. Muilt-threading support 
 python gradio_interface.py  --eval_path Path/to/Your/GeneratedEvalTaskFile
 ```
 
-After load the dataset,You can use keyboard shortcuts to quickly mark artists. There are 5 marking categories:
-"1. OverFit", "2. Well-Trained", "3. Need-Train", "4. Unfit", "5. Bad Artist"  
+After load the dataset,You can use keyboard shortcuts to quickly mark artists. There are 5 marking categories:  
+
+1. OverFit
+2. Well-Trained
+3. Need-Train
+4. Unfit",
+5. Bad Artist  
+
+Mark will be stored at human_feedback.json  
 
 **Currently Working on gradio interface**
