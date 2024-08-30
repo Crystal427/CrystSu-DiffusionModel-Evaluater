@@ -1,6 +1,7 @@
 # CrystSu_DiffusionModel_Evaluater
-Some tools to help us evaluate our Stable diffusion models
+A tool that provides automatic generation of Diffusion Model inferred images, and a convenient HumanEval GUI to help us evaluate our model's progress in learning artistic styles.
 
+Mainly use [dghs-imgutils](https://github.com/deepghs/imgutils) to evaluate images.
 
 # How to use?  
 ## Generate Eval Task 
@@ -21,3 +22,8 @@ For a large dataset, evaluation may take a lot of time. Muilt-threading support 
 ```
 python gradio_interface.py  --eval_path Path/to/Your/GeneratedEvalTaskFile
 ```
+
+After load the dataset,You can use keyboard shortcuts to quickly mark artists. There are 5 marking categories:
+"1. OverFit", "2. Well-Trained", "3. Need-Train", "4. Unfit", "5. Bad Artist"  
+
+**Currently Working on gradio interface**
