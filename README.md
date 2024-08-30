@@ -28,7 +28,7 @@ After load the dataset,You can use keyboard shortcuts to quickly mark artists. T
 1. OverFit
 2. Well-Trained
 3. Need-Train
-4. Unfit",
+4. Unfit
 5. Bad Artist  
 
 Mark will be stored at human_feedback.json  
