@@ -244,9 +244,9 @@ def main(zip_path, host, port, model, eval_pic_num):
             continue
         
         print(f"\nProcessing artist: {artist_folder}")
-        selected_images = select_images(artist_path, eval_pic_num)
+        selected_images = select_images(artist_path, max(eval_pic_num, 8))  # 至少选择8张图片
         
-        for image_path in selected_images:
+        for idx, image_path in enumerate(selected_images):
             image_name = os.path.basename(image_path)
             image_name_without_ext, _ = os.path.splitext(image_name)
             
@@ -259,44 +259,55 @@ def main(zip_path, host, port, model, eval_pic_num):
             os.makedirs(danbooru_output_dir, exist_ok=True)
             os.makedirs(florence_output_dir, exist_ok=True)
             
-            # Generate and save Danbooru image
-            for attempt in range(max_retries):
-                try:
-                    danbooru_image = generator.generate(danbooru_tags)
-                    danbooru_output_path = os.path.join(danbooru_output_dir, f"{image_name_without_ext}_{model}.png")
-                    danbooru_image.save(danbooru_output_path, format='PNG')
-                    break
-                except Exception as e:
-                    print(f"Attempt {attempt + 1} failed to generate Danbooru image: {str(e)}")
-                    if attempt < max_retries - 1:
-                        print("Retrying in 1 second...")
-                        time.sleep(1)
-                    else:
-                        print(f"Failed to generate Danbooru image after {max_retries} attempts. Skipping.")
+            # Generate and save Danbooru image (for all selected images up to eval_pic_num)
+            if idx < eval_pic_num:
+                for attempt in range(max_retries):
+                    try:
+                        danbooru_image = generator.generate(danbooru_tags)
+                        danbooru_output_path = os.path.join(danbooru_output_dir, f"{image_name_without_ext}_{model}.png")
+                        danbooru_image.save(danbooru_output_path, format='PNG')
+                        
+                        # Evaluate Danbooru image
+                        _, danbooru_score = process_image_file(Image.open(danbooru_output_path))
+                        
+                        # Update tracer.json for Danbooru
+                        update_tracer_json(artist_path, image_name, model, 
+                                           danbooru_score['aesthetic_score'], 
+                                           None)  # Florence score is None for now
+                        
+                        break
+                    except Exception as e:
+                        print(f"Attempt {attempt + 1} failed to generate Danbooru image: {str(e)}")
+                        if attempt < max_retries - 1:
+                            print("Retrying in 1 second...")
+                            time.sleep(1)
+                        else:
+                            print(f"Failed to generate Danbooru image after {max_retries} attempts. Skipping.")
             
-            # Generate and save Florence image
-            for attempt in range(max_retries):
-                try:
-                    florence_image = generator.generate(florence_tags)
-                    florence_output_path = os.path.join(florence_output_dir, f"{image_name_without_ext}_{model}.png")
-                    florence_image.save(florence_output_path, format='PNG')
-                    break
-                except Exception as e:
-                    print(f"Attempt {attempt + 1} failed to generate Florence image: {str(e)}")
-                    if attempt < max_retries - 1:
-                        print("Retrying in 1 second...")
-                        time.sleep(1)
-                    else:
-                        print(f"Failed to generate Florence image after {max_retries} attempts. Skipping.")
-            
-            # Evaluate images
-            _, danbooru_score = process_image_file(Image.open(danbooru_output_path))
-            _, florence_score = process_image_file(Image.open(florence_output_path))
-            
-            # Update tracer.json
-            update_tracer_json(artist_path, image_name, model, 
-                               danbooru_score['aesthetic_score'], 
-                               florence_score['aesthetic_score'])
+            # Generate and save Florence image (only for the first image)
+            if idx == 0:
+                for attempt in range(max_retries):
+                    try:
+                        florence_image = generator.generate(florence_tags)
+                        florence_output_path = os.path.join(florence_output_dir, f"{image_name_without_ext}_{model}.png")
+                        florence_image.save(florence_output_path, format='PNG')
+                        
+                        # Evaluate Florence image
+                        _, florence_score = process_image_file(Image.open(florence_output_path))
+                        
+                        # Update tracer.json for Florence
+                        update_tracer_json(artist_path, image_name, model, 
+                                           None,  # Danbooru score is None here
+                                           florence_score['aesthetic_score'])
+                        
+                        break
+                    except Exception as e:
+                        print(f"Attempt {attempt + 1} failed to generate Florence image: {str(e)}")
+                        if attempt < max_retries - 1:
+                            print("Retrying in 1 second...")
+                            time.sleep(1)
+                        else:
+                            print(f"Failed to generate Florence image after {max_retries} attempts. Skipping.")
             
             print(f"    Completed processing {image_name}")
         

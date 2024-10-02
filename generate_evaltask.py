@@ -210,8 +210,9 @@ def process_artist(artist_folder, output_folder, percentile):
     
     # 按文件夹分类图片
     images_by_folder = {
-        'old': [],  # 2010s and 2017s
-        'new': []   # 2020s, 2022s, new, unknown, undefined
+        'old': [],    # 2010s and 2017s
+        'recent': [], # 2020s, 2022s, unknown
+        'new': []     # new, undefined
     }
     
     for filename, data in results.items():
@@ -220,6 +221,8 @@ def process_artist(artist_folder, output_folder, percentile):
         if folder:
             if folder in ['2010s', '2017s']:
                 images_by_folder['old'].append((filename, data))
+            elif folder in ['2020s', '2022s', 'unknown']:
+                images_by_folder['recent'].append((filename, data))
             else:
                 images_by_folder['new'].append((filename, data))
     
@@ -230,11 +233,31 @@ def process_artist(artist_folder, output_folder, percentile):
     
     # 选择图片
     selected_images = []
-    if len(images_by_folder['old']) >= 30:
-        selected_images.extend(random.sample(images_by_folder['old'], 4))
-        selected_images.extend(random.sample(images_by_folder['new'], 6))
+    total_images = 8
+    
+    if len(images_by_folder['new']) >= 10:
+        new_count, recent_count, old_count = 5, 2, 1
     else:
-        selected_images.extend(random.sample(images_by_folder['new'], 10))
+        new_count, recent_count, old_count = 3, 4, 1
+    
+    for category, count in [('new', new_count), ('recent', recent_count), ('old', old_count)]:
+        if len(images_by_folder[category]) >= count:
+            selected_images.extend(random.sample(images_by_folder[category], count))
+        else:
+            selected_images.extend(images_by_folder[category])
+            remaining = count - len(images_by_folder[category])
+            for other_category in ['new', 'recent', 'old']:
+                if other_category != category and remaining > 0:
+                    additional = min(remaining, len(images_by_folder[other_category]))
+                    selected_images.extend(random.sample(images_by_folder[other_category], additional))
+                    remaining -= additional
+                if remaining == 0:
+                    break
+    
+    # 如果选择的图片不足10张，从所有类别中随机选择剩余的图片
+    if len(selected_images) < total_images:
+        all_remaining = [img for cat in images_by_folder.values() for img in cat if img not in selected_images]
+        selected_images.extend(random.sample(all_remaining, min(total_images - len(selected_images), len(all_remaining))))
     
     # 处理选中的图片
     artist_output_folder = os.path.join(output_folder, os.path.basename(artist_folder))
@@ -262,7 +285,7 @@ def process_artist(artist_folder, output_folder, percentile):
                     "Florence2tags": processed_data["finaltag_native"],
                     "PicOriginalJsonData": processed_data["original_data"],
                     "OriginalName": filename,
-                    "OriginalFolder": year_folder  # 添加这一行来记录原始文件夹
+                    "OriginalFolder": year_folder
                 }
                 break
     
