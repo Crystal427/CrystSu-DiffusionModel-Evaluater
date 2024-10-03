@@ -23,9 +23,8 @@ class SDWebUIGenerator:
         self.max_retries = max_retries
         self.retry_delay = retry_delay
         self.api = self._connect_with_retry()
-        
-        self.negative_prompt = "lowres,bad hands,worst quality,watermark,censored,jpeg artifacts"
-        self.cfg_scale = 4.5
+        self.negative_prompt = "lowres,(bad),extra digits,(2girls),3girls,mutiple girls,bad hands,error,text,fewer,extra,missing,worst quality,jpeg artifacts,(low, old, early,mid),comic,multiple views,displeasing,very displeasing,bad anatomy,bad hands,(scan artifacts:0.9),monochrome,fewer digits,jaggy lines,unclear"  # According to illu model page.
+        self.cfg_scale = 6   # change it because we start fintuning at illu model 
         self.steps = 37
         self.sampler_name = 'DPM++ 2M'
         self.scheduler = 'SGM Uniform'
