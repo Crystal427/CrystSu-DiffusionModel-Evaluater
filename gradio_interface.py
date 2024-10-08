@@ -445,8 +445,7 @@ def update_human_feedback(artist, feedback):
     
 if __name__ == "__main__":
     eval_file_path = r"F:\CrystSu-DiffusionModel-Evaluater\DatasetEval_20240813_202059.eval"
-    unzip_folder = r"F:\CrystSu-DiffusionModel-Evaluater\temp"
-    
+    unzip_folder = os.path.join(os.path.dirname(eval_file_path), "temp")
     unzip_file(eval_file_path, unzip_folder)
     
     demo = create_interface(unzip_folder)
