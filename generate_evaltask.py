@@ -207,8 +207,16 @@ from PIL import Image
 
 def process_artist(artist_folder, output_folder, percentile):
     results_path = os.path.join(artist_folder, 'results.json')
-    with open(results_path, 'r', encoding='utf-8') as f:
-        results = json.load(f)
+    if not os.path.exists(results_path):
+        print(f"警告: {results_path} 不存在,跳过处理 {artist_folder}")
+        return
+
+    try:
+        with open(results_path, 'r', encoding='utf-8') as f:
+            results = json.load(f)
+    except json.JSONDecodeError:
+        print(f"警告: {results_path} 不是有效的JSON文件,跳过处理 {artist_folder}")
+        return
     
     # 按文件夹分类图片
     images_by_folder = {
@@ -303,16 +311,19 @@ def main(dataset_folder, percentile, output_folder):
     with tempfile.TemporaryDirectory() as temp_dir:
         artist_folders = [f for f in os.listdir(dataset_folder) if os.path.isdir(os.path.join(dataset_folder, f))]
         total_artists = len(artist_folders)
+        processed_artists = 0
         
         for artist_folder in artist_folders:
             artist_path = os.path.join(dataset_folder, artist_folder)
             process_artist(artist_path, temp_dir, percentile)
+            processed_artists += 1
         
         # 创建meta.json
         meta_data = {
             "creation_time": datetime.now().isoformat(),
             "datasetver": "4.0",
-            "total_artists": total_artists
+            "total_artists": total_artists,
+            "processed_artists": processed_artists
         }
         with open(os.path.join(temp_dir, 'meta.json'), 'w', encoding='utf-8') as f:
             json.dump(meta_data, f, ensure_ascii=False, indent=2)
