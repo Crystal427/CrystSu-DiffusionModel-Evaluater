@@ -203,6 +203,8 @@ def process_image(artist_folder, year_folder, filename, output_folder):
     }
 
 
+from PIL import Image
+
 def process_artist(artist_folder, output_folder, percentile):
     results_path = os.path.join(artist_folder, 'results.json')
     with open(results_path, 'r', encoding='utf-8') as f:
@@ -273,8 +275,12 @@ def process_artist(artist_folder, output_folder, percentile):
                 original_path = os.path.join(root, filename)
                 year_folder = os.path.basename(root)
                 
-                new_filename = f"{i:03d}{os.path.splitext(filename)[1]}"
-                shutil.copy2(original_path, os.path.join(artist_output_folder, 'OriginalPic', new_filename))
+                new_filename = f"{i:03d}.webp"
+                
+                # 将图片转换为WEBP格式并压缩
+                with Image.open(original_path) as img:
+                    img.save(os.path.join(artist_output_folder, 'OriginalPic', new_filename), 
+                             'WEBP', quality=90)
                 
                 processed_data = process_image(artist_folder, year_folder, filename, output_folder)
                 
