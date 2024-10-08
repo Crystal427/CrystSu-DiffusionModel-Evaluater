@@ -16,15 +16,17 @@ import time
 import requests
 
 class SDWebUIGenerator:
-    def __init__(self, host, port, model, max_retries=3, retry_delay=5):
+    def __init__(self, host, port, model, use_https=True, max_retries=3, retry_delay=5):
         self.host = host
         self.port = port
         self.model = model
+        self.use_https = use_https  # 添加 use_https 作为实例属性
         self.max_retries = max_retries
         self.retry_delay = retry_delay
         self.api = self._connect_with_retry()
-        self.negative_prompt = "lowres,(bad),extra digits,(2girls),3girls,mutiple girls,bad hands,error,text,fewer,extra,missing,worst quality,jpeg artifacts,(low, old, early,mid),comic,multiple views,displeasing,very displeasing,bad anatomy,bad hands,(scan artifacts:0.9),monochrome,fewer digits,jaggy lines,unclear"  # According to illu model page.
-        self.cfg_scale = 6   # change it because we start fintuning at illu model 
+        
+        self.negative_prompt = "lowres,bad hands,worst quality,watermark,censored,jpeg artifacts"
+        self.cfg_scale = 4.5
         self.steps = 37
         self.sampler_name = 'DPM++ 2M'
         self.scheduler = 'SGM Uniform'
@@ -37,7 +39,7 @@ class SDWebUIGenerator:
     def _connect_with_retry(self):
         while True:
             try:
-                api = webuiapi.WebUIApi(host=self.host, port=self.port, use_https=True)
+                api = webuiapi.WebUIApi(host=self.host, port=self.port, use_https=self.use_https)  # 使用 self.use_https
                 # Test the connection
                 api.util_get_model_names()
                 print("Successfully connected to the SD Web UI API")
@@ -144,26 +146,6 @@ def process_image_file(image, aesthetic_model=_DEFAULT_MODEL):
             "scores_by_class": scores_by_class
         }
 
-def update_tracer_json(artist_path, image_name, model, danbooru_score, florence_score):
-    tracer_path = os.path.join(artist_path, 'tracer.json')
-    with open(tracer_path, 'r',encoding='utf-8') as f:
-        tracer_data = json.load(f)
-    
-    image_data = tracer_data.get(image_name, {})
-    
-    if 'PicDanboorutagsRatingPerEpoch' not in image_data:
-        image_data['PicDanboorutagsRatingPerEpoch'] = {}
-    if 'PicNatrualLanguagetagsRatingPerEpoch' not in image_data:
-        image_data['PicNatrualLanguagetagsRatingPerEpoch'] = {}
-    
-    image_data['PicDanboorutagsRatingPerEpoch'][f"{image_name}_{model}"] = danbooru_score
-    image_data['PicNatrualLanguagetagsRatingPerEpoch'][f"{image_name}_{model}"] = florence_score
-    
-    tracer_data[image_name] = image_data
-    
-    with open(tracer_path, 'w') as f:
-        json.dump(tracer_data, f, indent=2)
-
 def update_meta_json(meta_path, current_model, current_artist):
     with open(meta_path, 'r', encoding='utf-8') as f:
         meta_data = json.load(f)
@@ -187,7 +169,29 @@ def mark_model_as_completed(meta_path, model):
     with open(meta_path, 'w') as f:
         json.dump(meta_data, f, indent=2)
 
-def main(zip_path, host, port, model, eval_pic_num):
+def update_tracer_json(artist_path, image_name, model, danbooru_score, florence_score):
+    tracer_path = os.path.join(artist_path, 'tracer.json')
+    with open(tracer_path, 'r',encoding='utf-8') as f:
+        tracer_data = json.load(f)
+    
+    image_data = tracer_data.get(image_name, {})
+    
+    if 'PicDanboorutagsRatingPerEpoch' not in image_data:
+        image_data['PicDanboorutagsRatingPerEpoch'] = {}
+    if 'PicNatrualLanguagetagsRatingPerEpoch' not in image_data:
+        image_data['PicNatrualLanguagetagsRatingPerEpoch'] = {}
+    
+    image_data['PicDanboorutagsRatingPerEpoch'][f"{image_name}_{model}"] = danbooru_score
+    image_data['PicNatrualLanguagetagsRatingPerEpoch'][f"{image_name}_{model}"] = florence_score
+    
+    tracer_data[image_name] = image_data
+    
+    with open(tracer_path, 'w') as f:
+        json.dump(tracer_data, f, indent=2)
+
+
+
+def main(zip_path, host, port, model, eval_pic_num, use_https):
     # Set up paths
     script_dir = os.path.dirname(os.path.abspath(__file__))
     temp_dir = os.path.join(script_dir, 'temp')
@@ -205,16 +209,16 @@ def main(zip_path, host, port, model, eval_pic_num):
     # Check if the model has already been completed
     with open(meta_path, 'r', encoding='utf-8') as f:
         meta_data = json.load(f)
-    
+
     if 'completed_models' in meta_data and model in meta_data['completed_models']:
         print(f"Model {model} has already been evaluated. Exiting.")
         return
-    
+
     # Initialize the generator
     max_retries = 3
     for attempt in range(max_retries):
         try:
-            generator = SDWebUIGenerator(host, port, model)
+            generator = SDWebUIGenerator(host, port, model, use_https=use_https)  # 传递 use_https 参数
             break
         except Exception as e:
             print(f"Attempt {attempt + 1} failed to connect to the SD Web UI API: {str(e)}")
@@ -224,16 +228,16 @@ def main(zip_path, host, port, model, eval_pic_num):
             else:
                 print(f"Failed to connect after {max_retries} attempts. Exiting.")
                 return
-    
+
     # Get the current progress from meta.json
     current_artist = meta_data.get('current_artist', '')
-    
+
     # Get the list of all artist folders
     artist_folders = [folder for folder in os.listdir(dataset_path) if os.path.isdir(os.path.join(dataset_path, folder))]
-    
+
     # Create a tqdm progress bar
     pbar = tqdm(total=len(artist_folders), desc=f"Processing artists for model {model}", position=0, leave=True)
-    
+
     for artist_folder in artist_folders:
         artist_path = os.path.join(dataset_path, artist_folder)
         
@@ -241,11 +245,14 @@ def main(zip_path, host, port, model, eval_pic_num):
         if current_artist and artist_folder <= current_artist:
             pbar.update(1)
             continue
-        
+
         print(f"\nProcessing artist: {artist_folder}")
-        selected_images = select_images(artist_path, max(eval_pic_num, 8))  # 至少选择8张图片
+        selected_images = select_images(artist_path, eval_pic_num)
         
-        for idx, image_path in enumerate(selected_images):
+        # 标记是否为当前艺术家的第一张图片
+        is_first_image = True
+
+        for image_path in selected_images:
             image_name = os.path.basename(image_path)
             image_name_without_ext, _ = os.path.splitext(image_name)
             
@@ -258,47 +265,28 @@ def main(zip_path, host, port, model, eval_pic_num):
             os.makedirs(danbooru_output_dir, exist_ok=True)
             os.makedirs(florence_output_dir, exist_ok=True)
             
-            # Generate and save Danbooru image (for all selected images up to eval_pic_num)
-            if idx < eval_pic_num:
-                for attempt in range(max_retries):
-                    try:
-                        danbooru_image = generator.generate(danbooru_tags)
-                        danbooru_output_path = os.path.join(danbooru_output_dir, f"{image_name_without_ext}_{model}.png")
-                        danbooru_image.save(danbooru_output_path, format='PNG')
-                        
-                        # Evaluate Danbooru image
-                        _, danbooru_score = process_image_file(Image.open(danbooru_output_path))
-                        
-                        # Update tracer.json for Danbooru
-                        update_tracer_json(artist_path, image_name, model, 
-                                           danbooru_score['aesthetic_score'], 
-                                           None)  # Florence score is None for now
-                        
-                        break
-                    except Exception as e:
-                        print(f"Attempt {attempt + 1} failed to generate Danbooru image: {str(e)}")
-                        if attempt < max_retries - 1:
-                            print("Retrying in 1 second...")
-                            time.sleep(1)
-                        else:
-                            print(f"Failed to generate Danbooru image after {max_retries} attempts. Skipping.")
+            # Generate and save Danbooru image
+            for attempt in range(max_retries):
+                try:
+                    danbooru_image = generator.generate(danbooru_tags)
+                    danbooru_output_path = os.path.join(danbooru_output_dir, f"{image_name_without_ext}_{model}.png")
+                    danbooru_image.save(danbooru_output_path, format='PNG')
+                    break
+                except Exception as e:
+                    print(f"Attempt {attempt + 1} failed to generate Danbooru image: {str(e)}")
+                    if attempt < max_retries - 1:
+                        print("Retrying in 1 second...")
+                        time.sleep(1)
+                    else:
+                        print(f"Failed to generate Danbooru image after {max_retries} attempts. Skipping.")
             
-            # Generate and save Florence image (only for the first image)
-            if idx == 0:
+            # 仅为第一张图片生成 Florence 图像
+            if is_first_image:
                 for attempt in range(max_retries):
                     try:
                         florence_image = generator.generate(florence_tags)
                         florence_output_path = os.path.join(florence_output_dir, f"{image_name_without_ext}_{model}.png")
                         florence_image.save(florence_output_path, format='PNG')
-                        
-                        # Evaluate Florence image
-                        _, florence_score = process_image_file(Image.open(florence_output_path))
-                        
-                        # Update tracer.json for Florence
-                        update_tracer_json(artist_path, image_name, model, 
-                                           None,  # Danbooru score is None here
-                                           florence_score['aesthetic_score'])
-                        
                         break
                     except Exception as e:
                         print(f"Attempt {attempt + 1} failed to generate Florence image: {str(e)}")
@@ -307,6 +295,23 @@ def main(zip_path, host, port, model, eval_pic_num):
                             time.sleep(1)
                         else:
                             print(f"Failed to generate Florence image after {max_retries} attempts. Skipping.")
+                # 生成完第一张图片后，将标记设为 False
+                is_first_image = False
+            else:
+                florence_score = {"aesthetic_score": None}  # 或根据需要设置默认值
+                print(f"  Skipping Florence image generation for {image_name}")
+            
+            # 评估图片
+            _, danbooru_score = process_image_file(Image.open(danbooru_output_path))
+            if is_first_image:
+                _, florence_score = process_image_file(Image.open(florence_output_path))
+            else:
+                florence_score = {"aesthetic_score": None}  # 或根据需要设置默认值
+            
+            # 更新 tracer.json
+            update_tracer_json(artist_path, image_name, model, 
+                               danbooru_score['aesthetic_score'], 
+                               florence_score['aesthetic_score'] if florence_score else None)
             
             print(f"    Completed processing {image_name}")
         
@@ -346,7 +351,8 @@ if __name__ == "__main__":
     parser.add_argument("--port", type=int, default=7860, help="Port for the SD Web UI API")
     parser.add_argument("--model", help="Model name to use for generation")
     parser.add_argument("--eval_pic_num", default=4, type=int, help="Number of pictures to evaluate (max 10)")
+    parser.add_argument("--use_https", action='store_true', help="Use HTTPS for connecting to SD Web UI API")  # 添加 use_https 参数
     
     args = parser.parse_args()
     
-    main(args.zip_path, args.host, args.port, args.model, min(args.eval_pic_num, 10))
+    main(args.zip_path, args.host, args.port, args.model, min(args.eval_pic_num, 10), args.use_https) 
