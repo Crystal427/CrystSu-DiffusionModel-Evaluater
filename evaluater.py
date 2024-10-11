@@ -191,7 +191,7 @@ def update_tracer_json(artist_path, image_name, model, danbooru_score, florence_
 
 
 
-def main(zip_path, host, port, model, eval_pic_num, use_https):
+def main(zip_path, host, port, model, eval_pic_num, use_https, model_marked_name):
     # Set up paths
     script_dir = os.path.dirname(os.path.abspath(__file__))
     temp_dir = os.path.join(script_dir, 'temp')
@@ -269,7 +269,7 @@ def main(zip_path, host, port, model, eval_pic_num, use_https):
             for attempt in range(max_retries):
                 try:
                     danbooru_image = generator.generate(danbooru_tags)
-                    danbooru_output_path = os.path.join(danbooru_output_dir, f"{image_name_without_ext}_{model}.png")
+                    danbooru_output_path = os.path.join(danbooru_output_dir, f"{image_name_without_ext}_{model_marked_name}.png")
                     danbooru_image.save(danbooru_output_path, format='PNG')
                     break
                 except Exception as e:
@@ -285,7 +285,7 @@ def main(zip_path, host, port, model, eval_pic_num, use_https):
                 for attempt in range(max_retries):
                     try:
                         florence_image = generator.generate(florence_tags)
-                        florence_output_path = os.path.join(florence_output_dir, f"{image_name_without_ext}_{model}.png")
+                        florence_output_path = os.path.join(florence_output_dir, f"{image_name_without_ext}_{model_marked_name}.png")
                         florence_image.save(florence_output_path, format='PNG')
                         break
                     except Exception as e:
@@ -345,14 +345,18 @@ def main(zip_path, host, port, model, eval_pic_num, use_https):
 if __name__ == "__main__":
     import argparse
     
-    parser = argparse.ArgumentParser(description="Evaluate SD models")
-    parser.add_argument("--zip_path", help="Path to the ZIP file containing the dataset")
-    parser.add_argument("--host", default="localhost", help="Host for the SD Web UI API")
-    parser.add_argument("--port", type=int, default=7860, help="Port for the SD Web UI API")
-    parser.add_argument("--model", help="Model name to use for generation")
-    parser.add_argument("--eval_pic_num", default=4, type=int, help="Number of pictures to evaluate (max 10)")
-    parser.add_argument("--use_https", action='store_true', help="Use HTTPS for connecting to SD Web UI API")  # 添加 use_https 参数
+    parser = argparse.ArgumentParser(description="评估 SD 模型")
+    parser.add_argument("--zip_path", help="包含数据集的 ZIP 文件路径")
+    parser.add_argument("--host", default="localhost", help="SD Web UI API 的主机")
+    parser.add_argument("--port", type=int, default=7860, help="SD Web UI API 的端口")
+    parser.add_argument("--model", help="用于生成的模型名称")
+    parser.add_argument("--eval_pic_num", default=8, type=int, help="要评估的图片数量")
+    parser.add_argument("--use_https", action='store_true', help="使用 HTTPS 连接到 SD Web UI API")
+    parser.add_argument("--model_marked_name", help="用于保存图片文件名的模型标记名称")  # 新添加的参数
     
     args = parser.parse_args()
     
-    main(args.zip_path, args.host, args.port, args.model, min(args.eval_pic_num, 10), args.use_https) 
+    # 如果没有提供 model_marked_name,则使用 model 作为默认值
+    model_marked_name = args.model_marked_name if args.model_marked_name else args.model
+    
+    main(args.zip_path, args.host, args.port, args.model, min(args.eval_pic_num, 10), args.use_https, model_marked_name)
